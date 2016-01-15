@@ -23,7 +23,7 @@ public class RedisBackedPropertySupport<U> {
   private final Function<U, String> toString;
   protected volatile Optional<U> fetchedValue = Optional.empty();
 
-  public RedisBackedPropertySupport(Redis client, String redisKey, RedisConverter<? extends U> converter, Consumer<U> setter) {
+  public RedisBackedPropertySupport(Redis client, String redisKey, RedisConverter<U> converter, Consumer<U> setter) {
     Objects.requireNonNull(client, "Redis client for working with the propery");
     this.client = client;
 

@@ -1,21 +1,40 @@
 package com.webonise.tomcat8.redisession;
 
-import com.webonise.tomcat8.redisession.redisclient.BooleanConverter;
-import com.webonise.tomcat8.redisession.redisclient.Redis;
-import org.apache.catalina.*;
-import org.apache.catalina.util.StandardSessionIdGenerator;
-import org.apache.juli.logging.Log;
-import org.apache.juli.logging.LogFactory;
-import redis.clients.jedis.ScanParams;
-
 import java.beans.PropertyChangeListener;
 import java.beans.PropertyChangeSupport;
 import java.io.IOException;
-import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
-import java.util.function.*;
-import java.util.stream.*;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ForkJoinTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import org.apache.catalina.Container;
+import org.apache.catalina.Context;
+import org.apache.catalina.Manager;
+import org.apache.catalina.Session;
+import org.apache.catalina.SessionIdGenerator;
+import org.apache.catalina.util.StandardSessionIdGenerator;
+import org.apache.commons.lang3.ObjectUtils;
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
+
+import com.webonise.tomcat8.redisession.redisclient.BooleanConverter;
+import com.webonise.tomcat8.redisession.redisclient.Redis;
+
+import redis.clients.jedis.ScanParams;
 
 /**
  * Responsible for creating sessions that persist into Redis.
@@ -31,6 +50,11 @@ public class RedisSessionManager implements Manager {
   private volatile int getMaxInactiveInterval = (int) TimeUnit.HOURS.toSeconds(1L);
   private volatile SessionIdGenerator sessionIdGenerator = new StandardSessionIdGenerator();
 
+  /**
+   * The descriptive name of this Manager implementation (for logging).
+   */
+  protected static final String name = "RedisSessionManager";
+  
   public Redis getRedis() {
     return redis;
   }
@@ -368,11 +392,9 @@ public class RedisSessionManager implements Manager {
    * @param sessionId The session to check; never {@code null}
    * @return How long the session was alive for (in milliseconds); may be {@code null} if  it could not be determined.
    */
-  protected Long getSessionAliveTime(String sessionId) {
-    if (sessionId == null || sessionId.isEmpty()) return null;
+  protected Long getSessionAliveTime(String metadataKey) {
+    if (metadataKey == null || metadataKey.isEmpty()) return null;
     try {
-      String metadataKey = Convention.metadataKeyToSessionId(sessionId);
-
       List<String> results = redis.withRedis(jedis -> {
         return jedis.hmget(metadataKey, Convention.CREATION_TIME_HKEY, Convention.EXPIRED_TIME_HKEY);
       });
@@ -386,7 +408,7 @@ public class RedisSessionManager implements Manager {
       Date expiredTime = Convention.dateFromString(expiredTimeString);
       return expiredTime.getTime() - creationTime.getTime();
     } catch (Exception e) {
-      LOG.info("Could not determine the session alive time for " + sessionId, e);
+      LOG.info("Could not determine the session alive time for " + metadataKey, e);
       return null;
     }
   }
@@ -645,7 +667,7 @@ public class RedisSessionManager implements Manager {
    * @throws IOException            if an input/output error occurs
    */
   @Override
-  public void load() throws ClassNotFoundException, IOException {
+  public void load() {
     // DO NOTHING
   }
 
@@ -702,7 +724,7 @@ public class RedisSessionManager implements Manager {
    * @throws IOException if an input/output error occurs
    */
   @Override
-  public void unload() throws IOException {
+  public void unload() {
     // DO NOTHING
   }
 
@@ -737,7 +759,7 @@ public class RedisSessionManager implements Manager {
   protected int calculateSessionAverageAliveTime() {
     try {
       Collector<String, ?, Double> averager = Collectors.averagingLong(this::getSessionAliveTime);
-      Double average = createExpiredSessionIdStream().collect(averager);
+      Double average = createExpiredSessionIdStream().filter(p -> p != null).collect(averager);
       if (average == null) return 0;
       return Double.valueOf(average / 1000).intValue();
     } catch (Exception e) {
@@ -763,13 +785,12 @@ public class RedisSessionManager implements Manager {
 
   protected int calculateSessionMaxAliveTime() {
     try {
-      Optional<Long> result =
+      Long result =
           createMetadataKeyStream()
               .map(this::getSessionAliveTime)
-              .max(Comparator.naturalOrder());
-      Long maxAliveTime = result.orElse(null);
-      if (maxAliveTime == null) return 0;
-      maxAliveTime = TimeUnit.MILLISECONDS.toSeconds(maxAliveTime);
+              .filter(p -> p != null)
+              .max(Comparator.naturalOrder()).orElse(0L);
+      Long maxAliveTime = TimeUnit.MILLISECONDS.toSeconds(result);
       return (int) Math.min(Integer.MAX_VALUE, maxAliveTime);
     } catch (Exception e) {
       LOG.error("Error determining the session max alive time; defaulting to 0", e);
