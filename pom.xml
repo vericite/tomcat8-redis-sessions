@@ -91,12 +91,12 @@
 					<createDependencyReducedPom>false</createDependencyReducedPom>
 					<relocations>
 						<relocation>
-							<pattern>org.apache</pattern>
-							<shadedPattern>com.webnoise.internal.org.apache</shadedPattern>
+							<pattern>org.apache.commons</pattern>
+							<shadedPattern>com.webonise.internal.org.apache.commons</shadedPattern>
 						</relocation>
 						<relocation>
 							<pattern>redis</pattern>
-							<shadedPattern>com.webnoise.internal.redis</shadedPattern>
+							<shadedPattern>com.webonise.internal.redis</shadedPattern>
 						</relocation>
 					</relocations>
 					<!-- put your configurations here -->
