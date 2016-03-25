@@ -34,7 +34,7 @@ public class Redis {
   /**
    * The interface to be implemented (probably by a lambda) to define what to do with transaction results.
    *
-   * @param <T> The type to return from the transactionr esults.
+   * @param <T> The type to return from the transaction results.
    */
   public interface TransactionResultHandler<T> {
     T apply(Jedis jedis, List<Object> transactionResults) throws Exception;
@@ -44,6 +44,7 @@ public class Redis {
 
   public static final String DEFAULT_HOST = Protocol.DEFAULT_HOST;
   public static final int DEFAULT_PORT = Protocol.DEFAULT_PORT;
+  public static final int DEFAULT_DATABASE = Protocol.DEFAULT_DATABASE;
   public static final int DEFAULT_TIMEOUT = Math.max(Protocol.DEFAULT_TIMEOUT, (int) TimeUnit.SECONDS.toMillis(1L));
 
   private final JedisPool pool;
@@ -65,6 +66,10 @@ public class Redis {
   }
 
   public Redis(String redisHost, int redisPort, int redisTimeout) {
+    this(redisHost, redisPort, redisTimeout, null, DEFAULT_DATABASE);
+  }
+
+  public Redis(String redisHost, int redisPort, int redisTimeout, String redisPassword, int redisDB) {
     Objects.requireNonNull(redisHost, "Host for Redis");
     if (redisHost.equals("")) throw new IllegalArgumentException("Host for Redis was empty");
 
@@ -75,13 +80,15 @@ public class Redis {
     } else if (redisTimeout == 0) {
       log.warn("Redis timeout is 0, which is just asking for your application to hang.");
     }
+    
+    if (redisDB < 0) throw new IllegalArgumentException("Invalid database: " + redisDB);
 
     JedisPoolConfig config = new JedisPoolConfig();
-    config.setBlockWhenExhausted(false);
+    config.setBlockWhenExhausted(true);
     config.setFairness(false);
     config.setLifo(true);
 
-    pool = new JedisPool(config, redisHost, redisPort, redisTimeout);
+    pool = new JedisPool(config, redisHost, redisPort, redisTimeout, redisPassword, redisDB);
   }
 
   /**
