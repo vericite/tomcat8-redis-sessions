@@ -12,6 +12,7 @@ import java.security.Principal;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
+import java.util.stream.Stream;
 
 /**
  * The Redis-backed {@link Session} implementation.
@@ -29,7 +30,7 @@ public class RedisSession extends StandardSession implements Session {
   private volatile Map<String, RedisHashBackedPropertySupport<Serializable>> attributesProperties;
   private volatile RedisHashBackedPropertySupport<Boolean> isValidProperty;
 
-  public RedisSession(RedisSessionManager manager, String id) {
+  public RedisSession(RedisSessionManagerBase manager, String id) {
     super(manager);
     Objects.requireNonNull(manager, "manager responsible for this session");
     Objects.requireNonNull(manager.getRedis(), "Redis client for this session");
@@ -137,8 +138,8 @@ public class RedisSession extends StandardSession implements Session {
   }
 
   @Override
-  public RedisSessionManager getManager() {
-    return RedisSessionManager.class.cast(super.getManager());
+  public RedisSessionManagerBase getManager() {
+    return RedisSessionManagerBase.class.cast(super.getManager());
   }
 
   /**

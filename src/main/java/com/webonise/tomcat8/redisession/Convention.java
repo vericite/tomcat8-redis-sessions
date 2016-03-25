@@ -14,7 +14,6 @@ import java.util.function.*;
  * Various conventions used to determine keys and other derived values.
  */
 public class Convention {
-
   /*
       You almost certainly don't want to be accessing these from outside of this class. If you think you want
       to access these, you are almost certainly wrong. These conventional rules should be accessed via methods,
