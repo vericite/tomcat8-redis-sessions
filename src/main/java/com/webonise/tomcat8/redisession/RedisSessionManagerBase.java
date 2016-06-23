@@ -45,6 +45,7 @@ public class RedisSessionManagerBase implements Manager {
   private volatile Context context;
   private volatile boolean distributable = true;
   private volatile int maxInactiveInterval;
+  private volatile int metakeyExpire;
   private volatile SessionIdGenerator sessionIdGenerator = new StandardSessionIdGenerator();
   
   /**
@@ -147,6 +148,13 @@ public class RedisSessionManagerBase implements Manager {
       throw new IllegalArgumentException("Interval must be greater than 0; was " + interval);
     }
     this.maxInactiveInterval = interval;
+  }
+
+  public void setMetakeyExpire(int metakeyExpire) {
+    if (metakeyExpire < 0) {
+      throw new IllegalArgumentException("Metakey expiration must be greater than or equal to 0; was " + metakeyExpire);
+    }
+    this.metakeyExpire = metakeyExpire;
   }
 
   /**
@@ -265,8 +273,11 @@ public class RedisSessionManagerBase implements Manager {
    * Cleans all the sessions as per {@link #cleanSession(String)}.
    */
   protected void cleanSessions() throws Exception {
-    createValidSessionIdStream()
-        .forEach(sessionId -> this.cleanSession(sessionId));
+    createValidSessionIdStream().forEach(sessionId -> this.cleanSession(sessionId));
+
+    if (metakeyExpire > 0) {
+      createExpiredNoTTLSessionIdStream().forEach(sessionId -> this.expireSessionMetakey(sessionId));
+    }
   }
 
   /**
@@ -304,6 +315,20 @@ public class RedisSessionManagerBase implements Manager {
       });
     } catch (Exception e) {
       LOG.error("Could not invalidate session with id: " + sessionid, e);
+    }
+  }
+
+  protected void expireSessionMetakey(String sessionid) {
+    if (metakeyExpire > 0) {
+      String metadataKey = Convention.sessionIdToMetadataKey(sessionid);
+      try {
+        redis.withRedis(jedis -> {
+          jedis.expire(metadataKey, metakeyExpire);
+        });
+        LOG.debug("Expired metakey: " + metadataKey);
+      } catch (Exception e) {
+        LOG.error("Could not expire session metakey with id: " + sessionid, e);
+      }
     }
   }
 
@@ -868,7 +893,20 @@ public class RedisSessionManagerBase implements Manager {
       );
       return false;
     }
+  }
 
+  protected boolean isExpiredSession(String sessionId) {
+    Objects.requireNonNull(sessionId, "session id whose expiration date is desired");
+    String metadataKey = Convention.sessionIdToMetadataKey(sessionId);
+    try {
+      Long ttl = redis.withRedis(jedis -> {
+        return jedis.ttl(metadataKey);
+      });
+      return (ttl != null) ? ttl >= 0L : false;
+    } catch (Exception e) {
+      LOG.error("Error while determining session is expired for " + sessionId, e);
+      return false;
+    }
   }
 
   /**
@@ -914,6 +952,16 @@ public class RedisSessionManagerBase implements Manager {
     Predicate<String> validityTest = this::getSessionValidity;
     if (!valid) validityTest = validityTest.negate();
     return createSessionIdStream().filter(validityTest);
+  }
+
+  protected Stream<String> createExpiredNoTTLSessionIdStream() throws Exception {
+    return createExpiredSessionIdStreamWithTTLFilter(false);
+  }
+
+  protected Stream<String> createExpiredSessionIdStreamWithTTLFilter(boolean expired) throws Exception {
+    Predicate<String> expiredTest = this::isExpiredSession;
+    if (!expired) expiredTest = expiredTest.negate();
+    return createExpiredSessionIdStream().filter(expiredTest);
   }
 
   protected int countCurrentActiveSessions() {
