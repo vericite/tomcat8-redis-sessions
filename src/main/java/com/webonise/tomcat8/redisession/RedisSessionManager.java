@@ -37,8 +37,8 @@ public class RedisSessionManager extends RedisSessionManagerBase {
     setTimeout(config.getInt("redis.timeout", Redis.DEFAULT_TIMEOUT));
     setDatabase(config.getInt("redis.database", Redis.DEFAULT_DATABASE));
     setPassword(config.getString("redis.password"));
-    setMaxInactiveInterval(config.getInt("redis.max.inactive", (int) TimeUnit.HOURS.toSeconds(1)));
-    
+    setMaxInactiveInterval(config.getInt("redis.max.inactive", Long.valueOf(TimeUnit.HOURS.toSeconds(1)).intValue()));
+    setMetakeyExpire(config.getInt("redis.metakey.expire", Long.valueOf(TimeUnit.HOURS.toSeconds(1)).intValue()));
     startRedis();
   }
 
